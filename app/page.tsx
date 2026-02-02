@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import DrumPad, { DrumPadRef } from './components/DrumPad';
 import LatencyMonitor from './components/LatencyMonitor';
+import SponsoredRack from './components/SponsoredRack';
 import { useAudioEngine } from './hooks/useAudioEngine';
 import { DRUM_PADS, DrumPad as DrumPadType } from './lib/types/drum';
 import type { AudioConfig } from './lib/types/drum';
@@ -262,6 +263,9 @@ export default function Home() {
                 </button>
               )}
             </div>
+
+            {/* Sponsored Gear Module */}
+            <SponsoredRack />
           </aside>
 
           {/* The Studio Stage */}
