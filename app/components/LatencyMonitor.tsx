@@ -132,43 +132,43 @@ export default function LatencyMonitor({ avg, min, max, count }: LatencyMonitorP
   }, [avg]);
 
   const getStatusColor = () => {
-    if (avg < 8) return 'text-green-500 shadow-[0_0_10px_rgba(34,197,94,0.4)]';
-    if (avg < 15) return 'text-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.4)]';
-    return 'text-red-500 shadow-[0_0_10px_rgba(239,68,68,0.4)]';
+    if (avg < 8) return 'text-amber-500 shadow-[0_0_10px_rgba(255,157,0,0.15)]';
+    if (avg < 15) return 'text-amber-600/80';
+    return 'text-red-500 shadow-[0_0_10px_rgba(239,68,68,0.3)]';
   };
 
   const getStatusText = () => {
-    if (avg < 8) return 'PRO_LINK';
-    if (avg < 15) return 'NOMINAL';
-    if (avg < 25) return 'DELAYED';
-    return 'CRITICAL';
+    if (avg < 8) return 'SIGNAL_STABLE';
+    if (avg < 15) return 'LATENCY_NOMINAL';
+    if (avg < 25) return 'DELAY_DETECTED';
+    return 'CRITICAL_BUFFER';
   };
 
   const lastMeasurement = historyRef.current[historyRef.current.length - 1] || avg;
 
   return (
-    <div className="bg-zinc-950/80 rounded-lg p-3">
-      <div className="flex items-center justify-between mb-4">
+    <div className="bg-zinc-950/40 rounded p-4 font-sans">
+      <div className="flex items-center justify-between mb-5">
         <div className="flex flex-col">
-          <span className="text-[8px] text-zinc-500 font-bold tracking-widest uppercase opacity-70">Monitor</span>
-          <h3 className="text-white text-xs font-black italic tracking-tighter">SIG_OSC_V1</h3>
+          <span className="text-[7px] text-zinc-600 font-black tracking-[0.4em] uppercase">Analyzer</span>
+          <h3 className="text-zinc-300 text-[10px] font-black tracking-widest uppercase">SIG_ANALYZER_PRO</h3>
         </div>
-        <div className={`px-1.5 py-0.5 rounded border border-current text-[8px] font-mono font-bold tracking-tighter ${getStatusColor()}`}>
+        <div className={`px-2 py-0.5 rounded-sm border border-current text-[7px] font-black tracking-widest ${getStatusColor()} transition-all`}>
           {getStatusText()}
         </div>
       </div>
 
-      <div className="flex gap-4 mb-4">
-        <div className="flex-1 glass-card p-2 border-white/5 bg-white/[0.01]">
-          <div className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest mb-0.5">Input</div>
-          <div className={`text-sm font-mono font-black tracking-tighter ${getStatusColor()}`}>
-            {lastMeasurement.toFixed(3)}<span className="text-[10px] ml-0.5 opacity-50">ms</span>
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="bg-zinc-950 border border-white/5 p-2 rounded-sm">
+          <div className="text-[6px] text-zinc-600 uppercase font-black tracking-widest mb-1.5">Input_Δ</div>
+          <div className={`text-md font-mono font-black tracking-tighter ${getStatusColor()}`}>
+            {lastMeasurement.toFixed(2)}<span className="text-[9px] ml-0.5 opacity-40">ms</span>
           </div>
         </div>
-        <div className="flex-1 glass-card p-2 border-white/5 bg-white/[0.01]">
-          <div className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest mb-0.5">Avg</div>
-          <div className="text-sm font-mono font-black tracking-tighter text-white">
-            {avg.toFixed(3)}<span className="text-[10px] ml-0.5 opacity-50">ms</span>
+        <div className="bg-zinc-950 border border-white/5 p-2 rounded-sm">
+          <div className="text-[6px] text-zinc-600 uppercase font-black tracking-widest mb-1.5">Mean_Δ</div>
+          <div className="text-md font-mono font-black tracking-tighter text-zinc-200">
+            {avg.toFixed(2)}<span className="text-[9px] ml-0.5 opacity-40">ms</span>
           </div>
         </div>
       </div>
@@ -176,23 +176,28 @@ export default function LatencyMonitor({ avg, min, max, count }: LatencyMonitorP
       <div className="relative">
         <canvas
           ref={canvasRef}
-          className="w-full h-16 bg-black/40 rounded border border-white/[0.03]"
-          style={{ width: '100%', height: '64px' }}
+          className="w-full h-14 bg-black/60 rounded-sm border border-white/[0.02]"
+          style={{ width: '100%', height: '56px' }}
         />
-        {/* Decorative corner markers */}
-        <div className="absolute top-0 left-0 w-1.5 h-1.5 border-t border-l border-white/20" />
-        <div className="absolute top-0 right-0 w-1.5 h-1.5 border-t border-r border-white/20" />
-        <div className="absolute bottom-0 left-0 w-1.5 h-1.5 border-b border-l border-white/20" />
-        <div className="absolute bottom-0 right-0 w-1.5 h-1.5 border-b border-r border-white/20" />
+        {/* Decorative elements */}
+        <div className="absolute top-1 left-2 text-[5px] text-zinc-700 font-black tracking-widest pointer-events-none">REALTIME_SIGNAL</div>
+        <div className="absolute top-0 left-0 w-1 h-1 border-t border-l border-zinc-700" />
+        <div className="absolute top-0 right-0 w-1 h-1 border-t border-r border-zinc-700" />
+        <div className="absolute bottom-0 left-0 w-1 h-1 border-b border-l border-zinc-700" />
+        <div className="absolute bottom-0 right-0 w-1 h-1 border-b border-r border-zinc-700" />
       </div>
 
-      <div className="flex justify-between items-center mt-3">
-        <div className="flex items-center gap-1">
-          <span className="w-1 h-1 rounded-full bg-blue-500 animate-pulse" />
-          <span className="text-[8px] text-zinc-600 font-mono tracking-widest uppercase">Live</span>
+      <div className="flex justify-between items-center mt-4">
+        <div className="flex items-center gap-2">
+          <div className="flex gap-0.5">
+            <span className="w-1 h-2 bg-amber-500 animate-[pulse_1s_infinite]" />
+            <span className="w-1 h-2 bg-zinc-800" />
+            <span className="w-1 h-2 bg-zinc-800" />
+          </div>
+          <span className="text-[7px] text-zinc-600 font-black tracking-[0.2em] uppercase">Engine_Link_Active</span>
         </div>
-        <div className="text-[8px] text-zinc-700 font-mono">
-          {count} SMPLS
+        <div className="text-[7px] text-zinc-700 font-mono font-bold">
+          PK: {max.toFixed(1)}ms
         </div>
       </div>
     </div>

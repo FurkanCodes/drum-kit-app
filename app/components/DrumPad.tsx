@@ -116,62 +116,72 @@ const DrumPad = forwardRef<DrumPadRef, DrumPadProps>(({
 
   return (
     <div
-      className={`absolute transition-all duration-75 select-none touch-manipulation group ${isDesignMode ? 'cursor-move ring-2 ring-white/10 hover:ring-orange-500/50' : ''}`}
+      className={`absolute transition-all duration-150 select-none touch-manipulation group ${isDesignMode ? 'cursor-move ring-1 ring-amber-500/30 rounded-lg bg-amber-500/5' : ''}`}
       style={{
-        width: pad.type === 'kick' ? '120px' : '90px',
-        height: pad.type === 'kick' ? '120px' : '90px',
+        width: pad.type === 'kick' ? '130px' : '100px',
+        height: pad.type === 'kick' ? '130px' : '100px',
         left: pad.x !== undefined ? `${pad.x}%` : 'auto',
         top: pad.y !== undefined ? `${pad.y}%` : 'auto',
-        transform: isDragging ? 'scale(1.1) rotate(2deg)' : 'none',
+        transform: isDragging ? 'scale(1.05) rotate(1deg)' : 'none',
         zIndex: isDragging ? 100 : 1,
-        perspective: '1000px',
+        perspective: '1200px',
         transformStyle: 'preserve-3d',
       }}
     >
+      {/* Floor Shadow */}
+      <div
+        className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-[80%] h-4 bg-black/40 blur-xl rounded-full scale-y-[0.3] opacity-60 pointer-events-none transition-transform duration-100 group-active:scale-x-110"
+      />
+
       <button
         ref={buttonRef}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        className={`w-full h-full relative flex flex-col items-center justify-center transition-all duration-75 select-none transition-transform active:scale-95`}
+        className={`w-full h-full relative flex flex-col items-center justify-center transition-all duration-100 select-none active:scale-[0.98] outline-none`}
         style={{
           transformStyle: 'preserve-3d',
         }}
       >
-        {/* Realistic Image Layer */}
-        {pad.image ? (
-          <img
-            src={pad.image}
-            alt={pad.name}
-            className="w-full h-full object-contain filter drop-shadow-2xl brightness-90 group-hover:brightness-110 transition-all pointer-events-none"
-          />
-        ) : (
-          <div className="w-full h-full rounded-full border-4 border-zinc-800 bg-zinc-900 group-hover:bg-zinc-800 transition-colors" />
-        )}
-
-        {/* Glow Overlay */}
+        {/* Stage Light Projection (Hit Glow) */}
         <div
-          className="inner-glow absolute inset-0 opacity-0 transition-all duration-150 pointer-events-none rounded-full"
+          className="inner-glow absolute -inset-8 opacity-0 transition-all duration-300 pointer-events-none rounded-full blur-2xl"
           style={{
-            background: `radial-gradient(circle at center, ${pad.color}40 0%, transparent 70%)`,
+            background: `radial-gradient(circle at center, ${pad.color}30 0%, transparent 60%)`,
+            mixBlendMode: 'screen',
           }}
         />
 
-        {/* Label & Key */}
-        <div className="absolute -bottom-6 flex flex-col items-center pointer-events-none opacity-60 group-hover:opacity-100 transition-opacity">
-          <span className="text-white font-black text-[8px] uppercase tracking-widest">{pad.name}</span>
+        {/* Realistic Drum / Cymbal Image */}
+        {pad.image ? (
+          <div className="relative w-full h-full p-2 flex items-center justify-center">
+            <img
+              src={pad.image}
+              alt={pad.name}
+              className="w-full h-full object-contain filter drop-shadow-[0_10px_10px_rgba(0,0,0,0.6)] brightness-[0.85] contrast-[1.1] group-hover:brightness-100 transition-all pointer-events-none"
+            />
+            {/* Specular Highlight Overlay */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent pointer-events-none mix-blend-overlay rounded-full" />
+          </div>
+        ) : (
+          <div className="w-full h-full rounded-full border-[6px] border-zinc-900 bg-gradient-to-br from-zinc-800 to-zinc-950 shadow-2xl group-hover:from-zinc-700 transition-all" />
+        )}
+
+        {/* Professional Label */}
+        <div className="absolute -bottom-8 flex flex-col items-center pointer-events-none transition-all duration-200 group-hover:-bottom-9">
+          <span className="text-zinc-500 font-black text-[7px] uppercase tracking-[0.3em] mb-1">{pad.name}</span>
           <div
-            className="mt-0.5 px-1.5 py-0.5 rounded-sm bg-black/60 border border-white/5 text-[9px] font-mono font-bold"
-            style={{ color: pad.color }}
+            className="px-2 py-0.5 rounded-sm bg-zinc-950 border border-white/5 text-[10px] font-mono font-black"
+            style={{ color: pad.color, boxShadow: `0 0 10px ${pad.color}20` }}
           >
             {pad.key.toUpperCase()}
           </div>
         </div>
       </button>
 
-      {/* Design Mode Overlays - Separate from button to avoid event conflicts */}
+      {/* Design Mode Overlays */}
       {isDesignMode && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="absolute -top-6 left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none">
           <div
             onClick={(e) => {
               e.stopPropagation();
@@ -180,9 +190,9 @@ const DrumPad = forwardRef<DrumPadRef, DrumPadProps>(({
             }}
             role="button"
             tabIndex={0}
-            className="pointer-events-auto z-50 bg-orange-500 text-white text-[8px] font-bold px-2 py-1 rounded shadow-lg transform hover:scale-110 active:scale-95 transition-transform uppercase tracking-tighter cursor-pointer"
+            className="pointer-events-auto z-50 bg-amber-500 text-black text-[7px] font-black px-2 py-1 rounded shadow-xl transform hover:scale-105 active:scale-95 transition-all uppercase tracking-widest cursor-pointer border border-amber-400"
           >
-            {isAssigningKey ? 'PRESS KEY' : 'REBIND'}
+            {isAssigningKey ? 'READY_FOR_KEY' : 'CONFIG_MAP'}
           </div>
         </div>
       )}

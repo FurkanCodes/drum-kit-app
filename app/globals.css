@@ -1,21 +1,30 @@
 @import "tailwindcss";
 
 :root {
-  --background: #050505;
-  --foreground: #fafafa;
-  --card-bg: rgba(20, 20, 20, 0.6);
-  --card-border: rgba(255, 255, 255, 0.1);
-  --accent-orange: #ff6b00;
-  --accent-blue: #0070f3;
-  --accent-purple: #7928ca;
-  --glass-bg: rgba(255, 255, 255, 0.03);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  --background: #0a0a0b;
+  --foreground: #f2f2f3;
+
+  /* Studio Palette */
+  --studio-wood: #2c1a12;
+  --studio-wood-light: #3d261b;
+  --studio-metal: #1e1e21;
+  --studio-metal-brushed: #2a2a2e;
+
+  /* Accents */
+  --accent-amber: #ff9d00;
+  --accent-gold: #ffcc00;
+  --accent-ruby: #dc2626;
+
+  /* UI Elements */
+  --panel-bg: rgba(20, 20, 22, 0.95);
+  --panel-border: rgba(255, 255, 255, 0.05);
+  --knob-track: #121214;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Inter', 'Outfit', system-ui, -apple-system, sans-serif;
 }
 
 body {
@@ -26,8 +35,8 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Cinematic Background Mesh */
-.mesh-background {
+/* Studio Stage Environment */
+.studio-stage {
   position: fixed;
   top: 0;
   left: 0;
@@ -35,45 +44,51 @@ body {
   height: 100%;
   z-index: -1;
   background:
-    radial-gradient(circle at 0% 0%, rgba(255, 107, 0, 0.15) 0%, transparent 50%),
-    radial-gradient(circle at 100% 100%, rgba(0, 112, 243, 0.1) 0%, transparent 50%),
-    radial-gradient(circle at 50% 50%, rgba(121, 40, 202, 0.1) 0%, transparent 50%);
-  background-color: #050505;
+    /* Soft top light */
+    radial-gradient(ellipse at 50% 0%, rgba(255, 180, 100, 0.08) 0%, transparent 60%),
+    /* Floor lighting */
+    radial-gradient(ellipse at 50% 100%, rgba(10, 10, 11, 1) 0%, rgba(10, 10, 11, 0) 70%),
+    /* Ambient room depth */
+    linear-gradient(to bottom, #0a0a0b, #151518);
 }
 
-.mesh-background::after {
+.studio-stage::before {
   content: "";
   position: absolute;
-  top: 0;
+  top: 60%;
   left: 0;
   width: 100%;
-  height: 100%;
-  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  height: 40%;
+  background:
+    /* Floor texture / Wood grain look */
+    linear-gradient(rgba(10, 10, 11, 0.5), rgba(10, 10, 11, 0.8)),
+    repeating-linear-gradient(90deg, transparent, transparent 150px, rgba(255, 255, 255, 0.01) 151px);
+  mask-image: linear-gradient(to bottom, transparent, black);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black);
 }
 
-/* Glassmorphism Utilities */
-.glass-panel {
-  background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+/* Professional Rack Hardware Styles */
+.rack-panel {
+  background: linear-gradient(135deg, var(--studio-metal-brushed) 0%, var(--studio-metal) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 1),
+    0 10px 30px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  position: relative;
 }
 
-.glass-card {
-  background: rgba(20, 20, 20, 0.4);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 16px;
-  transition: all 0.3s ease;
-}
-
-.glass-card:hover {
-  border-color: rgba(255, 255, 255, 0.15);
-  background: rgba(30, 30, 30, 0.5);
-  transform: translateY(-2px);
+.rack-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  pointer-events: none;
+  border-radius: inherit;
 }
 
 /* Drum Pad Styles */
