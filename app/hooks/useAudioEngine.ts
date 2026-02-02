@@ -9,8 +9,9 @@ import {
   getLatencyStats,
   updateAudioConfig,
   getAudioConfig,
-  setMasterVolume,
   getSampleLoaderStatus,
+  getAudioContext,
+  getAudioDestination,
 } from '../lib/audio/engine';
 import type { AudioConfig } from '../lib/types/drum';
 
@@ -20,10 +21,11 @@ interface UseAudioEngineReturn {
   latencyMetrics: ReturnType<typeof getLatencyStats>;
   config: AudioConfig;
   sampleStatus: ReturnType<typeof getSampleLoaderStatus>;
+  audioContext: AudioContext | null;
+  audioDestination: AudioNode | null;
   trigger: (drumId: string, velocity?: number) => void;
   init: () => Promise<void>;
   updateConfig: (config: Partial<AudioConfig>) => void;
-  setVolume: (volume: number) => void;
 }
 
 export function useAudioEngine(): UseAudioEngineReturn {
@@ -32,6 +34,8 @@ export function useAudioEngine(): UseAudioEngineReturn {
   const [latencyMetrics, setLatencyMetrics] = useState(getLatencyStats());
   const [config, setConfig] = useState<AudioConfig>(getAudioConfig());
   const [sampleStatus, setSampleStatus] = useState(getSampleLoaderStatus());
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
+  const [audioDestination, setAudioDestination] = useState<AudioNode | null>(null);
   
   // Use ref to avoid re-renders during rapid triggers
   const metricsRef = useRef(latencyMetrics);
@@ -42,6 +46,12 @@ export function useAudioEngine(): UseAudioEngineReturn {
       const ready = isAudioEngineReady();
       setIsReady(ready);
       setSampleStatus(getSampleLoaderStatus());
+      
+      // Update audio context/destination refs when ready
+      if (ready) {
+        setAudioContext(getAudioContext());
+        setAudioDestination(getAudioDestination());
+      }
     };
     
     const interval = setInterval(checkStatus, 100);
@@ -67,6 +77,10 @@ export function useAudioEngine(): UseAudioEngineReturn {
     await resumeAudioContext();
     const success = await initAudioEngine();
     setIsReady(success);
+    if (success) {
+      setAudioContext(getAudioContext());
+      setAudioDestination(getAudioDestination());
+    }
     setIsInitializing(false);
   }, []);
   
@@ -78,11 +92,11 @@ export function useAudioEngine(): UseAudioEngineReturn {
       return;
     }
     
-    triggerDrum(drumId, velocity, (metrics) => {
-      // Update metrics immediately to show per-click latency
-      metricsRef.current = getLatencyStats();
-      // Update state to reflect the new latency measurement
-      setLatencyMetrics(metricsRef.current);
+    triggerDrum(drumId, velocity, (_metrics) => {
+      // Update metrics in background, no setState here for speed
+      if (metricsRef.current.count < 100) {
+        metricsRef.current = getLatencyStats();
+      }
     });
   }, [isReady, init]);
   
@@ -92,20 +106,16 @@ export function useAudioEngine(): UseAudioEngineReturn {
     setConfig(getAudioConfig());
   }, []);
   
-  // Set master volume
-  const setVolume = useCallback((volume: number) => {
-    setMasterVolume(volume);
-  }, []);
-  
   return {
     isReady,
     isInitializing,
     latencyMetrics,
     config,
     sampleStatus,
+    audioContext,
+    audioDestination,
     trigger,
     init,
     updateConfig,
-    setVolume,
   };
 }

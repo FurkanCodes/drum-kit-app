@@ -18,7 +18,6 @@ export default function Home() {
     trigger,
     init,
     updateConfig,
-    setVolume,
   } = useAudioEngine();
 
   // Refs to pad components for direct keyboard access
@@ -56,11 +55,6 @@ export default function Home() {
   const handlePreTriggerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const preTriggerOffset = parseInt(e.target.value);
     updateConfig({ preTriggerOffset });
-  };
-
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const volume = parseInt(e.target.value) / 100;
-    setVolume(volume);
   };
 
   const [isDesignMode, setIsDesignMode] = useState(false);
@@ -221,7 +215,6 @@ export default function Home() {
                       min="0"
                       max="100"
                       defaultValue="80"
-                      onChange={handleVolumeChange}
                       className="w-full h-1.5"
                     />
                   </div>

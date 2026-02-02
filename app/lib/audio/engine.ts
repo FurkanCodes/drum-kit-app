@@ -1,26 +1,22 @@
 // Ultra-low latency audio engine using pre-loaded samples
-// Manages AudioContext, sample playback, and voice allocation
+// Manages AudioContext, sample playback, voice allocation, and mixer
 
 import { SampleLoader, getSampleLoader, resetSampleLoader } from './sample-loader';
+import { initMixerEngine, getTrackInputNode, cleanupMixerEngine, isMixerInitialized } from './mixer';
 import { DRUM_PADS } from '../types/drum';
 import type { AudioConfig, LatencyMetrics } from '../types/drum';
 
 interface DrumEngine {
   ctx: AudioContext | null;
-  masterGain: GainNode | null;
-  compressor: DynamicsCompressorNode | null;
   sampleLoader: SampleLoader | null;
   config: AudioConfig;
   latencyMetrics: LatencyMetrics[];
   isInitialized: boolean;
-  activeVoices: Map<string, AudioBufferSourceNode>;
 }
 
 // Global singleton instance
 let engine: DrumEngine = {
   ctx: null,
-  masterGain: null,
-  compressor: null,
   sampleLoader: null,
   config: {
     bufferSize: 256,
@@ -32,7 +28,6 @@ let engine: DrumEngine = {
   },
   latencyMetrics: [],
   isInitialized: false,
-  activeVoices: new Map(),
 };
 
 // Initialize the audio engine
@@ -58,28 +53,18 @@ export async function initAudioEngine(config?: Partial<AudioConfig>): Promise<bo
       await engine.ctx.resume();
     }
 
-    // Create master compressor for consistent levels
-    engine.compressor = engine.ctx.createDynamicsCompressor();
-    engine.compressor.threshold.setValueAtTime(-12, engine.ctx.currentTime);
-    engine.compressor.knee.setValueAtTime(3, engine.ctx.currentTime);
-    engine.compressor.ratio.setValueAtTime(4, engine.ctx.currentTime);
-    engine.compressor.attack.setValueAtTime(0.001, engine.ctx.currentTime);
-    engine.compressor.release.setValueAtTime(0.1, engine.ctx.currentTime);
-
-    // Master gain
-    engine.masterGain = engine.ctx.createGain();
-    engine.masterGain.gain.setValueAtTime(0.8, engine.ctx.currentTime);
-
-    // Connect: Master -> Compressor -> Destination
-    engine.masterGain.connect(engine.compressor);
-    engine.compressor.connect(engine.ctx.destination);
-
     // Initialize sample loader and load all drum samples
     engine.sampleLoader = getSampleLoader(engine.ctx);
     await loadAllSamples();
 
+    // Initialize mixer engine (replaces simple master gain/compressor)
+    const mixerInitialized = await initMixerEngine(engine.ctx, engine.ctx.destination);
+    if (!mixerInitialized) {
+      throw new Error('Failed to initialize mixer');
+    }
+
     engine.isInitialized = true;
-    console.log('Audio engine initialized with samples');
+    console.log('Audio engine initialized with samples and mixer');
     return true;
   } catch (error) {
     console.error('Failed to initialize audio engine:', error);
@@ -120,11 +105,10 @@ export function triggerDrum(
   velocity: number = 1.0,
   callback?: (metrics: LatencyMetrics) => void
 ): boolean {
-  if (!engine.isInitialized || !engine.ctx || !engine.masterGain || !engine.sampleLoader) {
+  if (!engine.isInitialized || !engine.ctx || !engine.sampleLoader) {
     return false;
   }
 
-  // Record start time before any processing
   const triggerTime = performance.now();
   
   // Find the drum pad to get the sample path
@@ -145,6 +129,13 @@ export function triggerDrum(
   const offset = engine.config.preTriggerOffset / 1000;
   const audioTime = engine.ctx.currentTime + Math.max(0, offset);
 
+  // Get track input node from mixer (this is where the sample connects)
+  const trackInput = getTrackInputNode(drumId);
+  if (!trackInput) {
+    console.warn(`Mixer track not found: ${drumId}`);
+    return false;
+  }
+
   // Create audio source
   const source = engine.ctx.createBufferSource();
   source.buffer = sampleBuffer;
@@ -153,19 +144,15 @@ export function triggerDrum(
   const gainNode = engine.ctx.createGain();
   gainNode.gain.setValueAtTime(velocity, audioTime);
 
-  // Connect: Source -> Gain -> Master
+  // Connect: Source -> Gain -> Track Input (which goes through mixer)
   source.connect(gainNode);
-  gainNode.connect(engine.masterGain);
+  gainNode.connect(trackInput);
 
   // Schedule playback
   source.start(audioTime);
 
-  // Track active voice for potential cleanup
-  engine.activeVoices.set(drumId, source);
-  
   // Clean up when done
   source.onended = () => {
-    engine.activeVoices.delete(drumId);
     try {
       source.disconnect();
       gainNode.disconnect();
@@ -243,11 +230,11 @@ export async function resumeAudioContext(): Promise<void> {
   }
 }
 
-// Set master volume
+// Set master volume (now handled by mixer)
 export function setMasterVolume(volume: number): void {
-  if (engine.masterGain && engine.ctx) {
-    engine.masterGain.gain.setValueAtTime(volume, engine.ctx.currentTime);
-  }
+  // Mixer handles this - you can call setMasterVolume from mixer module directly
+  // This is kept for backwards compatibility
+  console.log('Master volume is now controlled by the mixer');
 }
 
 // Get AudioContext state
@@ -267,21 +254,30 @@ export function getSampleLoaderStatus(): { loaded: number; total: number } {
   };
 }
 
+// Get AudioContext for mixer
+export function getAudioContext(): AudioContext | null {
+  return engine.ctx;
+}
+
+// Get destination node for mixer
+export function getAudioDestination(): AudioNode | null {
+  return engine.ctx?.destination || null;
+}
+
 // Clean up
 export function cleanupAudioEngine(): void {
+  cleanupMixerEngine();
+  resetSampleLoader();
+  
   if (engine.ctx) {
     engine.ctx.close();
   }
-  resetSampleLoader();
   
   engine = {
     ctx: null,
-    masterGain: null,
-    compressor: null,
     sampleLoader: null,
     config: engine.config,
     latencyMetrics: [],
     isInitialized: false,
-    activeVoices: new Map(),
   };
 }
