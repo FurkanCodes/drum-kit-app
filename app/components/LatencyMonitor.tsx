@@ -144,7 +144,7 @@ export default function LatencyMonitor({ avg, min, max, count }: LatencyMonitorP
     return 'CRITICAL_BUFFER';
   };
 
-  const lastMeasurement = historyRef.current[historyRef.current.length - 1] || avg;
+  const lastMeasurement = avg;
 
   return (
     <div className="bg-zinc-950/40 rounded p-4 font-sans">
@@ -197,7 +197,7 @@ export default function LatencyMonitor({ avg, min, max, count }: LatencyMonitorP
           <span className="text-[7px] text-zinc-600 font-black tracking-[0.2em] uppercase">Engine_Link_Active</span>
         </div>
         <div className="text-[7px] text-zinc-700 font-mono font-bold">
-          PK: {max.toFixed(1)}ms
+          MN: {min.toFixed(1)}ms · PK: {max.toFixed(1)}ms
         </div>
       </div>
     </div>

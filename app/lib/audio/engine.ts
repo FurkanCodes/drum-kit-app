@@ -2,7 +2,7 @@
 // Manages AudioContext, sample playback, voice allocation, and mixer
 
 import { SampleLoader, getSampleLoader, resetSampleLoader } from './sample-loader';
-import { initMixerEngine, getTrackInputNode, cleanupMixerEngine, isMixerInitialized } from './mixer';
+import { initMixerEngine, getTrackInputNode, cleanupMixerEngine } from './mixer';
 import { DRUM_PADS } from '../types/drum';
 import type { AudioConfig, LatencyMetrics } from '../types/drum';
 
@@ -11,8 +11,25 @@ interface DrumEngine {
   sampleLoader: SampleLoader | null;
   config: AudioConfig;
   latencyMetrics: LatencyMetrics[];
+  activeVoices: ActiveVoice[];
+  jamOutputGain: GainNode | null;
+  jamOutputGainValue: number;
   isInitialized: boolean;
 }
+
+interface ActiveVoice {
+  id: number;
+  drumId: string;
+  chokeGroup: 'hihat' | null;
+  source: AudioBufferSourceNode;
+  gain: GainNode;
+  startTime: number;
+  endTime: number;
+  ended: boolean;
+  stopped: boolean;
+}
+
+let nextVoiceId = 1;
 
 // Global singleton instance
 let engine: DrumEngine = {
@@ -27,8 +44,23 @@ let engine: DrumEngine = {
     volume: 0.8,
   },
   latencyMetrics: [],
+  activeVoices: [],
+  jamOutputGain: null,
+  jamOutputGainValue: 1.0,
   isInitialized: false,
 };
+
+export function setJamOutputGain(multiplier: number): void {
+  const next = Math.max(0, Math.min(2, multiplier));
+  engine.jamOutputGainValue = next;
+
+  if (!engine.jamOutputGain || !engine.ctx) return;
+  engine.jamOutputGain.gain.setTargetAtTime(next, engine.ctx.currentTime, 0.02);
+}
+
+export function getJamOutputGain(): number {
+  return engine.jamOutputGainValue;
+}
 
 // Initialize the audio engine
 export async function initAudioEngine(config?: Partial<AudioConfig>): Promise<boolean> {
@@ -41,6 +73,11 @@ export async function initAudioEngine(config?: Partial<AudioConfig>): Promise<bo
     if (config) {
       engine.config = { ...engine.config, ...config };
     }
+
+    // Reset voice tracking for a clean slate
+    engine.activeVoices = [];
+    nextVoiceId = 1;
+    engine.jamOutputGain = null;
 
     // Create AudioContext with lowest latency settings
     engine.ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)({
@@ -57,8 +94,13 @@ export async function initAudioEngine(config?: Partial<AudioConfig>): Promise<bo
     engine.sampleLoader = getSampleLoader(engine.ctx);
     await loadAllSamples();
 
+    // Create Jam output gain stage (lets drums sit above YouTube audio without touching the master fader)
+    engine.jamOutputGain = engine.ctx.createGain();
+    engine.jamOutputGain.gain.value = engine.jamOutputGainValue;
+    engine.jamOutputGain.connect(engine.ctx.destination);
+
     // Initialize mixer engine (replaces simple master gain/compressor)
-    const mixerInitialized = await initMixerEngine(engine.ctx, engine.ctx.destination);
+    const mixerInitialized = await initMixerEngine(engine.ctx, engine.jamOutputGain);
     if (!mixerInitialized) {
       throw new Error('Failed to initialize mixer');
     }
@@ -110,6 +152,8 @@ export function triggerDrum(
   }
 
   const triggerTime = performance.now();
+  const ctx = engine.ctx;
+  const FADE_OUT_SEC = 0.015;
   
   // Find the drum pad to get the sample path
   const pad = DRUM_PADS.find(p => p.id === drumId);
@@ -125,9 +169,64 @@ export function triggerDrum(
     return false;
   }
 
+  const pruneVoices = () => {
+    const now = ctx.currentTime;
+    engine.activeVoices = engine.activeVoices.filter(v => !v.ended && v.endTime > now);
+  };
+
+  const stopVoice = (voice: ActiveVoice) => {
+    if (voice.stopped) return;
+    voice.stopped = true;
+
+    const baseTime = Math.max(ctx.currentTime, voice.startTime);
+    const fadeStart = baseTime;
+    const stopAt = baseTime + FADE_OUT_SEC + 0.001;
+
+    try {
+      const gainParam = voice.gain.gain;
+      const currentValue = gainParam.value;
+
+      gainParam.cancelScheduledValues(fadeStart);
+      gainParam.setValueAtTime(currentValue, fadeStart);
+      gainParam.linearRampToValueAtTime(0, fadeStart + FADE_OUT_SEC);
+    } catch {
+      // Ignore automation errors
+    }
+
+    try {
+      voice.source.stop(stopAt);
+    } catch {
+      // Source may already be stopped/ended
+    }
+  };
+
+  // 1) Prune finished voices before applying choke/polyphony logic
+  pruneVoices();
+
+  // 2) Hi-hat choke group: new hat hit cuts previous hats
+  const chokeGroup: ActiveVoice['chokeGroup'] = pad.type === 'hihat' ? 'hihat' : null;
+  if (chokeGroup === 'hihat') {
+    const remaining: ActiveVoice[] = [];
+    for (const voice of engine.activeVoices) {
+      if (voice.chokeGroup === 'hihat') {
+        stopVoice(voice);
+      } else {
+        remaining.push(voice);
+      }
+    }
+    engine.activeVoices = remaining;
+  }
+
+  // 3) Enforce polyphony limit (FIFO)
+  const maxVoices = Math.max(1, Math.floor(engine.config.maxVoices));
+  while (engine.activeVoices.length >= maxVoices) {
+    const oldest = engine.activeVoices.shift();
+    if (oldest) stopVoice(oldest);
+  }
+
   // Apply pre-trigger offset
   const offset = engine.config.preTriggerOffset / 1000;
-  const audioTime = engine.ctx.currentTime + Math.max(0, offset);
+  const audioTime = ctx.currentTime + Math.max(0, offset);
 
   // Get track input node from mixer (this is where the sample connects)
   const trackInput = getTrackInputNode(drumId);
@@ -137,22 +236,37 @@ export function triggerDrum(
   }
 
   // Create audio source
-  const source = engine.ctx.createBufferSource();
+  const source = ctx.createBufferSource();
   source.buffer = sampleBuffer;
 
   // Create gain node for velocity control
-  const gainNode = engine.ctx.createGain();
-  gainNode.gain.setValueAtTime(velocity, audioTime);
+  const gainNode = ctx.createGain();
+  const initialGain = Math.max(0, Math.min(1.5, velocity));
+  gainNode.gain.value = initialGain;
+  gainNode.gain.setValueAtTime(initialGain, audioTime);
 
   // Connect: Source -> Gain -> Track Input (which goes through mixer)
   source.connect(gainNode);
   gainNode.connect(trackInput);
+
+  const voice: ActiveVoice = {
+    id: nextVoiceId++,
+    drumId,
+    chokeGroup,
+    source,
+    gain: gainNode,
+    startTime: audioTime,
+    endTime: audioTime + sampleBuffer.duration,
+    ended: false,
+    stopped: false,
+  };
 
   // Schedule playback
   source.start(audioTime);
 
   // Clean up when done
   source.onended = () => {
+    voice.ended = true;
     try {
       source.disconnect();
       gainNode.disconnect();
@@ -160,6 +274,9 @@ export function triggerDrum(
       // Already disconnected
     }
   };
+
+  // 4) Register active voice
+  engine.activeVoices.push(voice);
 
   // Record end time after audio scheduling is complete
   const processingCompleteTime = performance.now();
@@ -261,13 +378,16 @@ export function getAudioContext(): AudioContext | null {
 
 // Get destination node for mixer
 export function getAudioDestination(): AudioNode | null {
-  return engine.ctx?.destination || null;
+  return engine.jamOutputGain || engine.ctx?.destination || null;
 }
 
 // Clean up
 export function cleanupAudioEngine(): void {
   cleanupMixerEngine();
   resetSampleLoader();
+  engine.activeVoices = [];
+  nextVoiceId = 1;
+  engine.jamOutputGain = null;
   
   if (engine.ctx) {
     engine.ctx.close();
@@ -278,6 +398,9 @@ export function cleanupAudioEngine(): void {
     sampleLoader: null,
     config: engine.config,
     latencyMetrics: [],
+    activeVoices: [],
+    jamOutputGain: null,
+    jamOutputGainValue: engine.jamOutputGainValue,
     isInitialized: false,
   };
 }

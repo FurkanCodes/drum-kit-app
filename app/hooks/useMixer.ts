@@ -18,7 +18,6 @@ import {
   getTrackVUMeter,
   getReturnVUMeter,
   getMasterVUMeter,
-  isMixerInitialized,
   type MixerState,
   type VUMeterData,
 } from '../lib/audio/mixer';

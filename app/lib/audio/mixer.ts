@@ -120,7 +120,7 @@ function initMasterBus() {
 
   // Input gain
   const input = ctx.createGain();
-  input.gain.value = 1.0;
+  input.gain.value = 0.75;
 
   // 3-band EQ
   const eqLow = ctx.createBiquadFilter();
@@ -141,15 +141,15 @@ function initMasterBus() {
 
   // Compressor
   const compressor = ctx.createDynamicsCompressor();
-  compressor.threshold.value = -18;
-  compressor.knee.value = 3;
-  compressor.ratio.value = 4;
-  compressor.attack.value = 0.005;
-  compressor.release.value = 0.1;
+  compressor.threshold.value = -14;
+  compressor.knee.value = 6;
+  compressor.ratio.value = 2.5;
+  compressor.attack.value = 0.01;
+  compressor.release.value = 0.18;
 
   // Soft limiter using waveshaper
   const limiter = ctx.createWaveShaper();
-  (limiter as any).curve = createSoftLimiterCurve();
+  limiter.curve = createSoftLimiterCurve();
   limiter.oversample = '4x';
 
   // Volume
@@ -184,9 +184,9 @@ function initMasterBus() {
 }
 
 // Create soft limiter curve
-function createSoftLimiterCurve(): Float32Array {
+function createSoftLimiterCurve(): Float32Array<ArrayBuffer> {
   const samples = 44100;
-  const curve = new Float32Array(samples);
+  const curve = new Float32Array(samples) as Float32Array<ArrayBuffer>;
   const threshold = 0.95; // -0.45dB
   
   for (let i = 0; i < samples; i++) {
@@ -202,8 +202,7 @@ function createSoftLimiterCurve(): Float32Array {
     }
   }
   
-  // Cast to expected type for WaveShaperNode
-  return curve as Float32Array;
+  return curve;
 }
 
 // Initialize return tracks (reverb, delay, etc.)
@@ -327,7 +326,7 @@ function createEffectNodes(
     
     case 'distortion': {
       const waveshaper = ctx.createWaveShaper();
-      (waveshaper as any).curve = createDistortionCurve(params.drive || 0.3);
+      waveshaper.curve = createDistortionCurve(params.drive || 0.3);
       waveshaper.oversample = '4x';
       
       const tone = ctx.createBiquadFilter();
@@ -346,9 +345,9 @@ function createEffectNodes(
 }
 
 // Create distortion curve
-function createDistortionCurve(amount: number): Float32Array {
+function createDistortionCurve(amount: number): Float32Array<ArrayBuffer> {
   const samples = 44100;
-  const curve = new Float32Array(samples);
+  const curve = new Float32Array(samples) as Float32Array<ArrayBuffer>;
   const deg = Math.PI / 180;
   
   for (let i = 0; i < samples; i++) {
@@ -356,8 +355,7 @@ function createDistortionCurve(amount: number): Float32Array {
     curve[i] = (3 + amount) * x * 20 * deg / (Math.PI + amount * Math.abs(x));
   }
   
-  // Cast to expected type for WaveShaperNode
-  return curve as Float32Array;
+  return curve;
 }
 
 // Initialize track nodes for drum pads
@@ -366,8 +364,26 @@ function initTrackNodes() {
 
   const ctx = mixerEngine.ctx;
 
+  const getDefaultFader = (type: (typeof DRUM_PADS)[number]['type']): number => {
+    switch (type) {
+      case 'kick':
+        return 0.95;
+      case 'snare':
+        return 0.85;
+      case 'hihat':
+        return 0.5;
+      case 'tom':
+        return 0.75;
+      case 'crash':
+        return 0.65;
+      default:
+        return 0.8;
+    }
+  };
+
   DRUM_PADS.forEach(pad => {
     const id = pad.id;
+    const defaultFader = getDefaultFader(pad.type);
 
     // Input gain (pre-fader)
     const inputGain = ctx.createGain();
@@ -379,7 +395,7 @@ function initTrackNodes() {
 
     // Volume (fader)
     const volume = ctx.createGain();
-    volume.gain.value = 0.8;
+    volume.gain.value = defaultFader;
 
     // Analyser for VU meter
     const analyser = ctx.createAnalyser();
@@ -433,7 +449,7 @@ function initTrackNodes() {
     mixerEngine.state.tracks.set(id, {
       id,
       name: pad.name,
-      volume: 0.8,
+      volume: defaultFader,
       pan: 0,
       muted: false,
       soloed: false,

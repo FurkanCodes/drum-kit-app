@@ -1,12 +1,45 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import DrumPad, { DrumPadRef } from './components/DrumPad';
+import JamAlong, { type JamAlongRef } from './components/JamAlong';
 import LatencyMonitor from './components/LatencyMonitor';
-import SponsoredRack from './components/SponsoredRack';
 import { useAudioEngine } from './hooks/useAudioEngine';
+import { useMixer } from './hooks/useMixer';
 import { DRUM_PADS, DrumPad as DrumPadType } from './lib/types/drum';
 import type { AudioConfig } from './lib/types/drum';
+
+const SponsoredRack = dynamic(() => import('./components/SponsoredRack'), {
+  ssr: false,
+  loading: () => (
+    <div className="rack-panel p-4 flex flex-col gap-3 min-h-[150px]">
+      <div className="flex items-center justify-between border-b border-white/5 pb-2">
+        <div className="flex flex-col">
+          <span className="text-[7px] text-zinc-600 font-black tracking-[0.4em] uppercase">Featured</span>
+          <h3 className="text-zinc-400 text-[9px] font-black tracking-widest uppercase">GEAR_MODULE_AD</h3>
+        </div>
+        <div className="flex gap-1">
+          <div className="w-1 h-1 rounded-full bg-amber-500/50" />
+          <div className="w-1 h-1 rounded-full bg-zinc-800" />
+        </div>
+      </div>
+
+      <div className="flex-grow flex items-center justify-center bg-zinc-950/40 border border-white/5 rounded-sm relative overflow-hidden group">
+        <div className="text-[7px] text-zinc-700 font-mono tracking-widest">LOADING AD...</div>
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-amber-500/[0.01] to-transparent pointer-events-none group-hover:via-amber-500/[0.03] transition-all" />
+      </div>
+
+      <div className="flex justify-between items-center px-1">
+        <span className="text-[6px] text-zinc-700 font-mono">ID: GEAR_M1_PRO</span>
+        <div className="flex gap-0.5">
+          <div className="w-2 h-0.5 bg-zinc-800" />
+          <div className="w-2 h-0.5 bg-zinc-800" />
+        </div>
+      </div>
+    </div>
+  ),
+});
 
 export default function Home() {
   const {
@@ -14,15 +47,20 @@ export default function Home() {
     isInitializing,
     latencyMetrics,
     config,
-    sampleStatus,
+    audioContext,
+    audioDestination,
     trigger,
     init,
     updateConfig,
   } = useAudioEngine();
 
+  const mixer = useMixer(audioContext, audioDestination);
+  const { isReady: isMixerReady, setMasterVolume } = mixer;
+
   // Refs to pad components for direct keyboard access
   const padsRef = useRef<Map<string, DrumPadRef>>(new Map());
   const audioInitializedRef = useRef(false);
+  const jamRef = useRef<JamAlongRef | null>(null);
 
   // Initialize audio on first user interaction
   const handleFirstInteraction = useCallback(async () => {
@@ -52,28 +90,37 @@ export default function Home() {
     updateConfig({ maxVoices });
   };
 
-  const handlePreTriggerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const preTriggerOffset = parseInt(e.target.value);
-    updateConfig({ preTriggerOffset });
-  };
+  const [globalVolume, setGlobalVolume] = useState(85);
+
+  // Apply master volume when mixer is ready, and keep it in sync
+  useEffect(() => {
+    if (!isMixerReady) return;
+    setMasterVolume(Math.max(0, Math.min(1, globalVolume / 100)));
+  }, [globalVolume, isMixerReady, setMasterVolume]);
 
   const [isDesignMode, setIsDesignMode] = useState(false);
   const [customPads, setCustomPads] = useState<DrumPadType[]>(DRUM_PADS);
 
-  // Persistence for custom layout
+  // Persistence for custom layout (client-only)
   useEffect(() => {
     const saved = localStorage.getItem('drum_studio_layout');
-    if (saved) {
-      try {
-        setCustomPads(JSON.parse(saved));
-      } catch (e) {
-        console.error('Failed to load layout', e);
-      }
+    if (!saved) return;
+
+    try {
+      const parsed = JSON.parse(saved) as DrumPadType[];
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCustomPads(parsed);
+    } catch (e) {
+      console.error('Failed to load layout', e);
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('drum_studio_layout', JSON.stringify(customPads));
+    try {
+      localStorage.setItem('drum_studio_layout', JSON.stringify(customPads));
+    } catch {
+      // ignore persistence errors (private mode, etc.)
+    }
   }, [customPads]);
 
   const handlePositionChange = (padId: string, x: number, y: number) => {
@@ -96,6 +143,11 @@ export default function Home() {
   const triggerCustom = useCallback((padId: string, velocity: number = 0.8) => {
     // Trigger audio
     trigger(padId, velocity);
+
+    // Auto-duck YouTube on kick/snare (JamAlong decides whether ducking is enabled/ready)
+    if (padId === 'kick' || padId === 'snare') {
+      jamRef.current?.duck();
+    }
 
     // Trigger visual feedback via ref
     const padRef = padsRef.current.get(padId);
@@ -208,13 +260,14 @@ export default function Home() {
                   <div className="flex flex-col gap-2">
                     <div className="flex justify-between">
                       <label className="text-[7px] text-zinc-500 uppercase font-black tracking-widest">Global_Volume</label>
-                      <span className="text-[9px] font-mono text-amber-500">{(config.volume ? config.volume * 100 : 80).toFixed(0)}dB</span>
+                      <span className="text-[9px] font-mono text-amber-500">{globalVolume.toFixed(0)}%</span>
                     </div>
                     <input
                       type="range"
                       min="0"
                       max="100"
-                      defaultValue="80"
+                      value={globalVolume}
+                      onChange={(e) => setGlobalVolume(parseInt(e.target.value) || 0)}
                       className="w-full h-1.5"
                     />
                   </div>
@@ -256,6 +309,8 @@ export default function Home() {
                 </button>
               )}
             </div>
+
+            <JamAlong ref={jamRef} />
 
             {/* Sponsored Gear Module */}
             <SponsoredRack />
